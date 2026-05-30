@@ -1,7 +1,6 @@
 {
-  "name": "stream-proxy",
+  "name": "vercel-stream-proxy",
   "private": true,
   "type": "module",
-  "version": "1.0.0",
-  "dependencies": {}
+  "version": "1.0.0"
 }
