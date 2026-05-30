@@ -5,39 +5,82 @@ export default async function handler(req, res) {
   const { id } = req.query;
 
   if (!id) {
-    return res.status(400).json({ error: "Missing id" });
+    return res.status(400).json({
+      error: "Missing stream id"
+    });
   }
 
   try {
     const stream = await getStream(id);
 
     if (!stream) {
-      return res.status(404).json({ error: "Stream not found" });
+      return res.status(404).json({
+        error: "Stream not found"
+      });
     }
 
-    const upstream = await fetch(stream.url);
+    const upstream = await fetch(stream.url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+      }
+    });
 
     if (!upstream.ok) {
-      return res.status(upstream.status).send("Upstream failed");
+      return res.status(upstream.status).json({
+        error: `Upstream returned ${upstream.status}`
+      });
     }
 
-    const playlist = await upstream.text();
+    const contentType =
+      upstream.headers.get("content-type") || "";
 
     const host = `https://${req.headers.host}`;
 
-    const rewritten = rewritePlaylist(
-      playlist,
-      stream.url,
-      host
+    // If it's an HLS playlist, rewrite it
+    if (
+      contentType.includes("mpegurl") ||
+      contentType.includes("m3u") ||
+      stream.url.toLowerCase().includes(".m3u8")
+    ) {
+      const playlist = await upstream.text();
+
+      const rewritten = rewritePlaylist(
+        playlist,
+        stream.url,
+        host
+      );
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.apple.mpegurl"
+      );
+
+      res.setHeader(
+        "Cache-Control",
+        "public, max-age=15"
+      );
+
+      return res.status(200).send(rewritten);
+    }
+
+    // Fallback: proxy non-playlist content directly
+    const buffer = Buffer.from(
+      await upstream.arrayBuffer()
     );
 
     res.setHeader(
       "Content-Type",
-      "application/vnd.apple.mpegurl"
+      contentType || "application/octet-stream"
     );
 
-    res.send(rewritten);
-  } catch (err) {
-    res.status(500).send(err.message);
+    return res.status(200).send(buffer);
+
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      error: error.message
+    });
   }
 }
