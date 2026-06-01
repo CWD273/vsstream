@@ -1,15 +1,18 @@
 export default async function handler(req, res) {
   const { u } = req.query;
 
-  console.log("REQUEST:", req.url);
-  console.log("QUERY:", req.query);
+  console.log("========== SEGMENT REQUEST ==========");
+  console.log("Time:", new Date().toISOString());
+  console.log("Method:", req.method);
+  console.log("URL:", req.url);
+  console.log("u:", u);
 
   if (!u) {
-    console.error("Missing u parameter");
+    console.error("Missing URL parameter");
 
     return res.status(400).json({
       error: "Missing URL",
-      request: req.url,
+      requestUrl: req.url,
       query: req.query
     });
   }
@@ -22,40 +25,84 @@ export default async function handler(req, res) {
       }
     });
 
-    console.log(
-      "FETCH",
-      u,
-      upstream.status
-    );
+    const contentType =
+      upstream.headers.get("content-type");
+
+    const contentLength =
+      upstream.headers.get("content-length");
+
+    console.log("Upstream URL:", u);
+    console.log("Upstream Status:", upstream.status);
+    console.log("Upstream Content-Type:", contentType);
+    console.log("Upstream Content-Length:", contentLength);
 
     if (!upstream.ok) {
+      const body = await upstream.text();
+
+      console.error("Upstream returned error");
+      console.error("Status:", upstream.status);
+      console.error("Body Preview:", body.slice(0, 500));
+
       return res.status(upstream.status).json({
         error: "Upstream error",
         status: upstream.status,
-        url: u
+        contentType,
+        bodyPreview: body.slice(0, 200)
       });
     }
-
-    const contentType =
-      upstream.headers.get("content-type") ||
-      "application/octet-stream";
-
-    res.setHeader(
-      "Content-Type",
-      contentType
-    );
 
     const buffer = Buffer.from(
       await upstream.arrayBuffer()
     );
 
-    res.send(buffer);
+    console.log(
+      "Downloaded bytes:",
+      buffer.length
+    );
+
+    res.setHeader(
+      "Content-Type",
+      contentType || "video/mp2t"
+    );
+
+    if (contentLength) {
+      res.setHeader(
+        "Content-Length",
+        contentLength
+      );
+    }
+
+    res.setHeader(
+      "Access-Control-Allow-Origin",
+      "*"
+    );
+
+    res.setHeader(
+      "Accept-Ranges",
+      "bytes"
+    );
+
+    res.setHeader(
+      "Cache-Control",
+      "no-store"
+    );
+
+    console.log(
+      "Response sent successfully"
+    );
+
+    return res.send(buffer);
 
   } catch (err) {
+    console.error("Proxy exception:");
     console.error(err);
 
-    res.status(500).json({
-      error: err.message
+    return res.status(500).json({
+      error: err.message,
+      stack:
+        process.env.NODE_ENV === "development"
+          ? err.stack
+          : undefined
     });
   }
 }
