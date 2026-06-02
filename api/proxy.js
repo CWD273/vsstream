@@ -1,36 +1,35 @@
-import { rewritePlaylist }
-  from "../lib/rewrite.js";
+import { rewritePlaylist } from "../lib/rewrite.js";
 
-export default async function handler(
-  req,
-  res
-) {
+export default async function handler(req, res) {
   const { u } = req.query;
 
   if (!u) {
-    return res.status(400)
-      .send("Missing URL");
+    return res.status(400).send("Missing URL");
   }
 
   try {
-    const upstream =
-      await fetch(u);
+    const upstream = await fetch(u, {
+      cache: "no-store",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+      }
+    });
 
     if (!upstream.ok) {
-      return res.status(
-        upstream.status
-      ).send("Upstream failed");
+      return res
+        .status(upstream.status)
+        .send(await upstream.text());
     }
 
-    const text =
-      await upstream.text();
+    const playlist = await upstream.text();
 
     const host =
       `https://${req.headers.host}`;
 
     const rewritten =
       rewritePlaylist(
-        text,
+        playlist,
         u,
         host
       );
@@ -42,12 +41,12 @@ export default async function handler(
 
     res.setHeader(
       "Cache-Control",
-      "public,max-age=15"
+      "no-store, no-cache, must-revalidate"
     );
 
-    res.send(rewritten);
+    return res.send(rewritten);
+
   } catch (err) {
-    res.status(500)
-      .send(err.message);
+    return res.status(500).send(err.message);
   }
 }
