@@ -1,5 +1,4 @@
 import { getStream } from "../lib/catalog.js";
-import { rewritePlaylist } from "../lib/rewrite.js";
 
 export default async function handler(req, res) {
   const { id } = req.query;
@@ -19,68 +18,24 @@ export default async function handler(req, res) {
       });
     }
 
-    const upstream = await fetch(stream.url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-      }
-    });
-
-    if (!upstream.ok) {
-      return res.status(upstream.status).json({
-        error: `Upstream returned ${upstream.status}`
-      });
-    }
-
-    const contentType =
-      upstream.headers.get("content-type") || "";
-
     const host = `https://${req.headers.host}`;
 
-    // If it's an HLS playlist, rewrite it
-    if (
-      contentType.includes("mpegurl") ||
-      contentType.includes("m3u") ||
-      stream.url.toLowerCase().includes(".m3u8")
-    ) {
-      const playlist = await upstream.text();
-
-      const rewritten = rewritePlaylist(
-        playlist,
-        stream.url,
-        host
-      );
-
-      res.setHeader(
-        "Content-Type",
-        "application/vnd.apple.mpegurl"
-      );
-
-      res.setHeader(
-        "Cache-Control",
-        "public, max-age=15"
-      );
-
-      return res.status(200).send(rewritten);
-    }
-
-    // Fallback: proxy non-playlist content directly
-    const buffer = Buffer.from(
-      await upstream.arrayBuffer()
-    );
+    const ts = Date.now();
 
     res.setHeader(
-      "Content-Type",
-      contentType || "application/octet-stream"
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate"
     );
 
-    return res.status(200).send(buffer);
-
-  } catch (error) {
-    console.error(error);
-
+    return res.redirect(
+      302,
+      `${host}/api/proxy?u=${encodeURIComponent(
+        stream.url
+      )}&t=${ts}`
+    );
+  } catch (err) {
     return res.status(500).json({
-      error: error.message
+      error: err.message
     });
   }
 }
