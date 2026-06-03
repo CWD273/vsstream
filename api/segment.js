@@ -8,8 +8,6 @@ export default async function handler(req, res) {
   console.log("u:", u);
 
   if (!u) {
-    console.error("Missing URL parameter");
-
     return res.status(400).json({
       error: "Missing URL",
       requestUrl: req.url,
@@ -18,11 +16,22 @@ export default async function handler(req, res) {
   }
 
   try {
+    const headers = {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    };
+
+    if (req.headers.range) {
+      headers.Range = req.headers.range;
+      console.log(
+        "Forwarding Range:",
+        req.headers.range
+      );
+    }
+
     const upstream = await fetch(u, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-      }
+      headers,
+      cache: "no-store"
     });
 
     const contentType =
@@ -31,23 +40,28 @@ export default async function handler(req, res) {
     const contentLength =
       upstream.headers.get("content-length");
 
-    console.log("Upstream URL:", u);
+    const contentRange =
+      upstream.headers.get("content-range");
+
+    const acceptRanges =
+      upstream.headers.get("accept-ranges");
+
     console.log("Upstream Status:", upstream.status);
-    console.log("Upstream Content-Type:", contentType);
-    console.log("Upstream Content-Length:", contentLength);
+    console.log("Content-Type:", contentType);
+    console.log("Content-Length:", contentLength);
+    console.log("Content-Range:", contentRange);
 
     if (!upstream.ok) {
       const body = await upstream.text();
 
-      console.error("Upstream returned error");
+      console.error("Upstream Error");
       console.error("Status:", upstream.status);
-      console.error("Body Preview:", body.slice(0, 500));
+      console.error("Body:", body);
 
       return res.status(upstream.status).json({
         error: "Upstream error",
         status: upstream.status,
-        contentType,
-        bodyPreview: body.slice(0, 200)
+        body
       });
     }
 
@@ -55,10 +69,7 @@ export default async function handler(req, res) {
       await upstream.arrayBuffer()
     );
 
-    console.log(
-      "Downloaded bytes:",
-      buffer.length
-    );
+    res.status(upstream.status);
 
     res.setHeader(
       "Content-Type",
@@ -72,14 +83,28 @@ export default async function handler(req, res) {
       );
     }
 
+    if (contentRange) {
+      res.setHeader(
+        "Content-Range",
+        contentRange
+      );
+    }
+
+    if (acceptRanges) {
+      res.setHeader(
+        "Accept-Ranges",
+        acceptRanges
+      );
+    } else {
+      res.setHeader(
+        "Accept-Ranges",
+        "bytes"
+      );
+    }
+
     res.setHeader(
       "Access-Control-Allow-Origin",
       "*"
-    );
-
-    res.setHeader(
-      "Accept-Ranges",
-      "bytes"
     );
 
     res.setHeader(
@@ -87,22 +112,13 @@ export default async function handler(req, res) {
       "no-store"
     );
 
-    console.log(
-      "Response sent successfully"
-    );
-
     return res.send(buffer);
 
   } catch (err) {
-    console.error("Proxy exception:");
     console.error(err);
 
     return res.status(500).json({
-      error: err.message,
-      stack:
-        process.env.NODE_ENV === "development"
-          ? err.stack
-          : undefined
+      error: err.message
     });
   }
 }
